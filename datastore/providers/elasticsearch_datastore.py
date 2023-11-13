@@ -47,11 +47,11 @@ class ElasticsearchDataStore(DataStore):
                 Any of "cosine" / "l2_norm" / "dot_product".
 
         """
-        assert similarity in [
+        assert similarity in {
             "cosine",
             "l2_norm",
             "dot_product",
-        ], "Similarity must be one of 'cosine' / 'l2_norm' / 'dot_product'."
+        }, "Similarity must be one of 'cosine' / 'l2_norm' / 'dot_product'."
         assert replicas > 0, "Replicas must be greater than or equal to 0."
         assert shards > 0, "Shards must be greater than or equal to 0."
 
@@ -79,7 +79,7 @@ class ElasticsearchDataStore(DataStore):
         Return a list of document ids.
         """
         actions = []
-        for _, chunkList in chunks.items():
+        for chunkList in chunks.values():
             for chunk in chunkList:
                 actions = (
                     actions
@@ -123,11 +123,11 @@ class ElasticsearchDataStore(DataStore):
         # Delete all vectors from the index if delete_all is True
         if delete_all:
             try:
-                logger.info(f"Deleting all vectors from index")
+                logger.info("Deleting all vectors from index")
                 self.client.delete_by_query(
                     index=self.index_name, query={"match_all": {}}
                 )
-                logger.info(f"Deleted all vectors successfully")
+                logger.info("Deleted all vectors successfully")
                 return True
             except Exception as e:
                 logger.error(f"Error deleting all vectors: {e}")
@@ -140,20 +140,20 @@ class ElasticsearchDataStore(DataStore):
             try:
                 logger.info(f"Deleting vectors with filter {es_filters}")
                 self.client.delete_by_query(index=self.index_name, query=es_filters)
-                logger.info(f"Deleted vectors with filter successfully")
+                logger.info("Deleted vectors with filter successfully")
             except Exception as e:
                 logger.error(f"Error deleting vectors with filter: {e}")
                 raise e
 
         if ids:
             try:
-                documents_to_delete = [doc_id for doc_id in ids]
+                documents_to_delete = list(ids)
                 logger.info(f"Deleting {len(documents_to_delete)} documents")
                 res = self.client.delete_by_query(
                     index=self.index_name,
                     query={"terms": {"metadata.document_id": documents_to_delete}},
                 )
-                logger.info(f"Deleted documents successfully")
+                logger.info("Deleted documents successfully")
             except Exception as e:
                 logger.error(f"Error deleting documents: {e}")
                 raise e
@@ -222,20 +222,21 @@ class ElasticsearchDataStore(DataStore):
         searches = []
 
         for query in queries:
-            searches.append({"index": self.index_name})
-            searches.append(
-                {
-                    "_source": True,
-                    "knn": {
-                        "field": "embedding",
-                        "query_vector": query.embedding,
-                        "k": query.top_k,
-                        "num_candidates": query.top_k,
+            searches.extend(
+                (
+                    {"index": self.index_name},
+                    {
+                        "_source": True,
+                        "knn": {
+                            "field": "embedding",
+                            "query_vector": query.embedding,
+                            "k": query.top_k,
+                            "num_candidates": query.top_k,
+                        },
+                        "size": query.top_k,
                     },
-                    "size": query.top_k,
-                }
+                )
             )
-
         return searches
 
     def _convert_hit_to_document_chunk_with_score(self, hit) -> DocumentChunkWithScore:
